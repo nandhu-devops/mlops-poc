@@ -1,0 +1,30 @@
+# k8s/ingestion-cronjob.yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: yt-ingest-cron
+  namespace: mlops
+spec:
+  schedule: "0 */6 * * *"   # every 6 hours, change as needed
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: fastapi-sa
+          containers:
+            - name: yt-ingest
+              image: 118730128420.dkr.ecr.us-east-1.amazonaws.com/yt-ingest:latest
+              args:
+                - "/bin/sh"
+                - "-c"
+                - >
+                  # Example: fetch comments for a list of videos or a channel.
+                  curl -s "http://yt-ingest-svc.mlops.svc.cluster.local:8080/fetch_comments?video_url=https://www.youtube.com/watch?v=X29X1BnAppM&max_results=200"
+              env:
+                - name: S3_BUCKET
+                  value: mlops-yt-artifacts-nandak-1760367211
+                - name: S3_PREFIX
+                  value: datasets
+                - name: AWS_REGION
+                  value: us-east-1
+          restartPolicy: OnFailure

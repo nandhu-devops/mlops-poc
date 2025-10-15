@@ -1,0 +1,6 @@
+fastapi
+uvicorn[standard]
+youtube-comment-downloader
+boto3
+
+
