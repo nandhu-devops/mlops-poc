@@ -2,8 +2,10 @@ boto3
 pandas
 mlflow
 transformers
-torch
+torch           # pick CPU or specific CUDA version if building for GPU nodes
 datasets
 s3fs
 psycopg2-binary
+uvicorn
+fastapi
 

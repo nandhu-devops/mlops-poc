@@ -1,25 +1,22 @@
-# syntax=docker/dockerfile:1
 FROM python:3.10-slim
 
-LABEL maintainer="YouTube Sentiment MLOps PoC"
-LABEL stage="Kubeflow Component Image"
-
-# ---- System setup ----
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential git curl ca-certificates \
- && rm -rf /var/lib/apt/lists/*
-
+# Set working directory
 WORKDIR /app
 
-# ---- Install Python dependencies ----
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements and install dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# ---- Copy component folders ----
+# Copy preprocess and train components
 COPY preprocess /app/preprocess
 COPY train /app/train
 
-# ---- Default command ----
-# Component entrypoint (override in Kubeflow)
-ENTRYPOINT ["bash", "-c"]
+# Default entrypoint (can be overridden in Kubeflow)
+ENTRYPOINT ["python", "/app/preprocess/component.py"]
 
