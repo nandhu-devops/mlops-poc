@@ -1,0 +1,181 @@
+components:
+  comp-preprocess:
+    executorLabel: exec-preprocess
+    inputDefinitions:
+      parameters:
+        aws_region:
+          parameterType: STRING
+        input_s3_uri:
+          parameterType: STRING
+        output_s3_uri:
+          parameterType: STRING
+    outputDefinitions:
+      parameters:
+        Output:
+          parameterType: STRING
+  comp-train:
+    executorLabel: exec-train
+    inputDefinitions:
+      parameters:
+        aws_region:
+          parameterType: STRING
+        input_s3_uri:
+          parameterType: STRING
+        mlflow_uri:
+          parameterType: STRING
+        model_name:
+          parameterType: STRING
+        output_s3_uri:
+          parameterType: STRING
+        s3_bucket:
+          parameterType: STRING
+deploymentSpec:
+  executors:
+    exec-preprocess:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - preprocess
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.14.6'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef preprocess(input_s3_uri: str, output_s3_uri: str, aws_region:\
+          \ str) -> str:\n    \"\"\"Preprocess YouTube comments and upload cleaned\
+          \ data to S3.\n       Returns: output_s3_uri (so downstream components can\
+          \ consume it)\n    \"\"\"\n    import os, subprocess\n    os.environ[\"\
+          INPUT_S3_URI\"] = input_s3_uri\n    os.environ[\"OUTPUT_S3_URI\"] = output_s3_uri\n\
+          \    os.environ[\"AWS_REGION\"] = aws_region\n    print(f\"Preprocessing\
+          \ from {input_s3_uri} \u2192 {output_s3_uri}\")\n    subprocess.run([\"\
+          python\", \"/app/preprocess/component.py\"], check=True)\n    # Return the\
+          \ output path so KFP treats it as a component output\n    return output_s3_uri\n\
+          \n"
+        image: 118730128420.dkr.ecr.us-east-1.amazonaws.com/yt-kfp-component:latest
+    exec-train:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - train
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.14.6'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef train(input_s3_uri: str, output_s3_uri: str, mlflow_uri: str,\
+          \ s3_bucket: str, model_name: str, aws_region: str):\n    \"\"\"Train sentiment\
+          \ model and log results to MLflow.\"\"\"\n    import os, subprocess\n  \
+          \  os.environ[\"INPUT_S3_URI\"] = input_s3_uri\n    os.environ[\"OUTPUT_S3_URI\"\
+          ] = output_s3_uri\n    os.environ[\"MLFLOW_URI\"] = mlflow_uri\n    os.environ[\"\
+          S3_BUCKET\"] = s3_bucket\n    os.environ[\"MODEL_NAME\"] = model_name\n\
+          \    os.environ[\"AWS_REGION\"] = aws_region\n    print(f\"Training model\
+          \ {model_name}, logging to {mlflow_uri}\")\n    subprocess.run([\"python\"\
+          , \"/app/train/component.py\"], check=True)\n\n"
+        image: 118730128420.dkr.ecr.us-east-1.amazonaws.com/yt-kfp-component:latest
+pipelineInfo:
+  description: YouTube Sentiment Analyzer pipeline using MLflow + S3 + EKS
+  name: yt-sentiment-pipeline-param
+root:
+  dag:
+    tasks:
+      preprocess:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-preprocess
+        inputs:
+          parameters:
+            aws_region:
+              componentInputParameter: AWS_REGION
+            input_s3_uri:
+              componentInputParameter: INPUT_S3_URI
+            output_s3_uri:
+              componentInputParameter: OUTPUT_S3_URI
+        taskInfo:
+          name: preprocess
+      train:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-train
+        dependentTasks:
+        - preprocess
+        inputs:
+          parameters:
+            aws_region:
+              componentInputParameter: AWS_REGION
+            input_s3_uri:
+              taskOutputParameter:
+                outputParameterKey: Output
+                producerTask: preprocess
+            mlflow_uri:
+              componentInputParameter: MLFLOW_URI
+            model_name:
+              componentInputParameter: MODEL_NAME
+            output_s3_uri:
+              runtimeValue:
+                constant: s3://mlops-yt-artifacts-nandak-1760367211/datasets/train_metrics.txt
+            s3_bucket:
+              componentInputParameter: S3_BUCKET
+        taskInfo:
+          name: train
+  inputDefinitions:
+    parameters:
+      AWS_REGION:
+        defaultValue: us-east-1
+        isOptional: true
+        parameterType: STRING
+      INPUT_S3_URI:
+        defaultValue: s3://mlops-yt-artifacts-nandak-1760367211/datasets/raw.csv
+        isOptional: true
+        parameterType: STRING
+      MLFLOW_URI:
+        defaultValue: http://mlflow-service.mlops.svc.cluster.local:5000
+        isOptional: true
+        parameterType: STRING
+      MODEL_NAME:
+        defaultValue: distilbert-base-uncased
+        isOptional: true
+        parameterType: STRING
+      OUTPUT_S3_URI:
+        defaultValue: s3://mlops-yt-artifacts-nandak-1760367211/datasets/cleaned.csv
+        isOptional: true
+        parameterType: STRING
+      S3_BUCKET:
+        defaultValue: mlops-yt-artifacts-nandak-1760367211
+        isOptional: true
+        parameterType: STRING
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.14.6
