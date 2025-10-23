@@ -1,3 +1,13 @@
+# PIPELINE DEFINITION
+# Name: yt-sentiment-pipeline-param
+# Description: YouTube Sentiment Analyzer pipeline using MLflow + S3 + EKS
+# Inputs:
+#    AWS_REGION: str [Default: 'us-east-1']
+#    INPUT_S3_URI: str [Default: 's3://mlops-yt-artifacts-nandak-1760367211/datasets/raw.csv']
+#    MLFLOW_URI: str [Default: 'http://mlflow-service.mlops.svc.cluster.local:5000']
+#    MODEL_NAME: str [Default: 'distilbert-base-uncased']
+#    OUTPUT_S3_URI: str [Default: 's3://mlops-yt-artifacts-nandak-1760367211/datasets/cleaned.csv']
+#    S3_BUCKET: str [Default: 'mlops-yt-artifacts-nandak-1760367211']
 components:
   comp-preprocess:
     executorLabel: exec-preprocess
