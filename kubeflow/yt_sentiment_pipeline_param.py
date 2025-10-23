@@ -44,7 +44,7 @@ def train(input_s3_uri: str, output_s3_uri: str, mlflow_uri: str, s3_bucket: str
 def yt_sentiment_pipeline(
     INPUT_S3_URI: str = "s3://mlops-yt-artifacts-nandak-1760367211/datasets/raw.csv",
     OUTPUT_S3_URI: str = "s3://mlops-yt-artifacts-nandak-1760367211/datasets/cleaned.csv",
-    MLFLOW_URI: str = "http://mlflow-service.mlops.svc.cluster.local:5000",
+    MLFLOW_URI: str = "http://localhost:5000",
     S3_BUCKET: str = "mlops-yt-artifacts-nandak-1760367211",
     AWS_REGION: str = "us-east-1",
     MODEL_NAME: str = "distilbert-base-uncased"
