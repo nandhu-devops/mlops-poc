@@ -19,15 +19,23 @@ components:
           parameterType: STRING
         output_s3_uri:
           parameterType: STRING
+    outputDefinitions:
+      parameters:
+        Output:
+          parameterType: STRING
   comp-train:
     executorLabel: exec-train
     inputDefinitions:
       parameters:
         aws_region:
           parameterType: STRING
+        input_s3_uri:
+          parameterType: STRING
         mlflow_uri:
           parameterType: STRING
         model_name:
+          parameterType: STRING
+        output_s3_uri:
           parameterType: STRING
         s3_bucket:
           parameterType: STRING
@@ -60,12 +68,15 @@ deploymentSpec:
           '
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
           \ *\n\ndef preprocess(input_s3_uri: str, output_s3_uri: str, aws_region:\
-          \ str):\n    \"\"\"Preprocess YouTube comments and upload cleaned data to\
-          \ S3.\"\"\"\n    import os, subprocess\n    os.environ[\"INPUT_S3_URI\"\
-          ] = input_s3_uri\n    os.environ[\"OUTPUT_S3_URI\"] = output_s3_uri\n  \
-          \  os.environ[\"AWS_REGION\"] = aws_region\n    print(f\"Preprocessing from\
-          \ {input_s3_uri} \u2192 {output_s3_uri}\")\n    subprocess.run([\"python\"\
-          , \"/app/preprocess/component.py\"], check=True)\n\n"
+          \ str) -> str:\n    \"\"\"Preprocess YouTube comments and upload cleaned\
+          \ data to S3.\n       Returns: output_s3_uri (so downstream components can\
+          \ consume it)\n    \"\"\"\n    import os, subprocess\n    os.environ[\"\
+          INPUT_S3_URI\"] = input_s3_uri\n    os.environ[\"OUTPUT_S3_URI\"] = output_s3_uri\n\
+          \    os.environ[\"AWS_REGION\"] = aws_region\n    print(f\"Preprocessing\
+          \ from {input_s3_uri} \u2192 {output_s3_uri}\")\n    subprocess.run([\"\
+          python\", \"/app/preprocess/component.py\"], check=True)\n    # Return the\
+          \ output path so KFP treats it as a component output\n    return output_s3_uri\n\
+          \n"
         image: 118730128420.dkr.ecr.us-east-1.amazonaws.com/yt-kfp-component:latest
     exec-train:
       container:
@@ -93,13 +104,15 @@ deploymentSpec:
 
           '
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
-          \ *\n\ndef train(mlflow_uri: str, s3_bucket: str, model_name: str, aws_region:\
-          \ str):\n    \"\"\"Train sentiment model and log results to MLflow.\"\"\"\
-          \n    import os, subprocess\n    os.environ[\"MLFLOW_URI\"] = mlflow_uri\n\
-          \    os.environ[\"S3_BUCKET\"] = s3_bucket\n    os.environ[\"MODEL_NAME\"\
-          ] = model_name\n    os.environ[\"AWS_REGION\"] = aws_region\n    print(f\"\
-          Training model {model_name}, logging to {mlflow_uri}\")\n    subprocess.run([\"\
-          python\", \"/app/train/component.py\"], check=True)\n\n"
+          \ *\n\ndef train(input_s3_uri: str, output_s3_uri: str, mlflow_uri: str,\
+          \ s3_bucket: str, model_name: str, aws_region: str):\n    \"\"\"Train sentiment\
+          \ model and log results to MLflow.\"\"\"\n    import os, subprocess\n  \
+          \  os.environ[\"INPUT_S3_URI\"] = input_s3_uri\n    os.environ[\"OUTPUT_S3_URI\"\
+          ] = output_s3_uri\n    os.environ[\"MLFLOW_URI\"] = mlflow_uri\n    os.environ[\"\
+          S3_BUCKET\"] = s3_bucket\n    os.environ[\"MODEL_NAME\"] = model_name\n\
+          \    os.environ[\"AWS_REGION\"] = aws_region\n    print(f\"Training model\
+          \ {model_name}, logging to {mlflow_uri}\")\n    subprocess.run([\"python\"\
+          , \"/app/train/component.py\"], check=True)\n\n"
         image: 118730128420.dkr.ecr.us-east-1.amazonaws.com/yt-kfp-component:latest
 pipelineInfo:
   description: YouTube Sentiment Analyzer pipeline using MLflow + S3 + EKS
@@ -133,10 +146,17 @@ root:
           parameters:
             aws_region:
               componentInputParameter: AWS_REGION
+            input_s3_uri:
+              taskOutputParameter:
+                outputParameterKey: Output
+                producerTask: preprocess
             mlflow_uri:
               componentInputParameter: MLFLOW_URI
             model_name:
               componentInputParameter: MODEL_NAME
+            output_s3_uri:
+              runtimeValue:
+                constant: s3://mlops-yt-artifacts-nandak-1760367211/datasets/train_metrics.txt
             s3_bucket:
               componentInputParameter: S3_BUCKET
         taskInfo:

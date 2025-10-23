@@ -17,8 +17,9 @@ def preprocess(input_s3_uri: str, output_s3_uri: str, aws_region: str) -> str:
     os.environ["AWS_REGION"] = aws_region
     print(f"Preprocessing from {input_s3_uri} → {output_s3_uri}")
     subprocess.run(["python", "/app/preprocess/component.py"], check=True)
-    # return the output path so KFP treats it as a component output
+    # Return the output path so KFP treats it as a component output
     return output_s3_uri
+
 
 # --- Training component (now accepts input_s3_uri) ---
 @component(base_image=IMAGE)
@@ -34,6 +35,7 @@ def train(input_s3_uri: str, output_s3_uri: str, mlflow_uri: str, s3_bucket: str
     print(f"Training model {model_name}, logging to {mlflow_uri}")
     subprocess.run(["python", "/app/train/component.py"], check=True)
 
+
 # --- Pipeline definition ---
 @dsl.pipeline(
     name="yt-sentiment-pipeline-param",
@@ -47,6 +49,9 @@ def yt_sentiment_pipeline(
     AWS_REGION: str = "us-east-1",
     MODEL_NAME: str = "distilbert-base-uncased"
 ):
+    # ✅ Safely define derived training output path (avoid .replace() on PipelineParam)
+    TRAIN_OUTPUT_S3_URI = "s3://mlops-yt-artifacts-nandak-1760367211/datasets/train_metrics.txt"
+
     # Step 1: Preprocessing (produces cleaned CSV path as output)
     pre = preprocess(
         input_s3_uri=INPUT_S3_URI,
@@ -56,15 +61,14 @@ def yt_sentiment_pipeline(
 
     # Step 2: Training — input_s3_uri is the preprocess output
     tr = train(
-        input_s3_uri=pre.outputs["output_s3_uri"],
-        output_s3_uri=f"{OUTPUT_S3_URI.replace('cleaned.csv','train_metrics.txt')}",
+        input_s3_uri=pre.output,  # ✅ Correct single-output reference
+        output_s3_uri=TRAIN_OUTPUT_S3_URI,
         mlflow_uri=MLFLOW_URI,
         s3_bucket=S3_BUCKET,
         model_name=MODEL_NAME,
         aws_region=AWS_REGION
     )
 
-    # run training on node-large
+    # Run training on node-large
     tr.add_node_selector_constraint("eks.amazonaws.com/nodegroup", "training-node")
     tr.after(pre)
-
